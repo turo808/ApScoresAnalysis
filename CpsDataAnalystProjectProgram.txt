@@ -1,0 +1,322 @@
+/*Load Csv Files into Library*/
+
+FILENAME REFFILE '/home/u63366301/CpsSchoolData.csv';
+
+PROC IMPORT DATAFILE=REFFILE
+	DBMS=CSV
+	OUT=WORK.CpsSchoolData;
+	GETNAMES=YES;
+RUN;
+
+PROC CONTENTS DATA=WORK.CpsSchoolData; RUN;
+
+
+
+FILENAME REFFILE '/home/u63366301/CpsApScores.csv';
+
+PROC IMPORT DATAFILE=REFFILE
+	DBMS=CSV
+	OUT=WORK.CpsApScores;
+	GETNAMES=YES;
+RUN;
+
+PROC CONTENTS DATA=WORK.CpsApScores; RUN;
+
+
+
+
+FILENAME REFFILE '/home/u63366301/CpsData/CpsDemographics.csv';
+
+PROC IMPORT DATAFILE=REFFILE
+	DBMS=CSV
+	OUT=WORK.CpsDemographics;
+	GETNAMES=YES;
+RUN;
+
+PROC CONTENTS DATA=WORK.CpsDemographics; RUN;
+
+
+/*Identifying Missing Data*/
+
+/*CpsSchoolData*/
+ods noproctitle;
+
+proc format;
+	value _nmissprint low-high="Non-missing";
+	value $_cmissprint " "=" " other="Non-missing";
+run;
+
+proc freq data=WORK.CPSSCHOOLDATA;
+	title3 "Missing Data Frequencies";
+	title4 h=2 "Legend: ., A, B, etc = Missing";
+	format SchoolID _nmissprint.;
+	format SchoolName SchoolLongName SchoolAddress Governance Category 
+		Network $_cmissprint.;
+	tables SchoolID SchoolName SchoolLongName SchoolAddress Governance Category 
+		Network / missing nocum;
+run;
+
+proc freq data=WORK.CPSSCHOOLDATA noprint;
+	table SchoolID * SchoolName * SchoolLongName * SchoolAddress * Governance * 
+		Category * Network / missing out=Work._MissingData_;
+	format SchoolID _nmissprint.;
+	format SchoolName SchoolLongName SchoolAddress Governance Category 
+		Network $_cmissprint.;
+run;
+
+proc print data=Work._MissingData_ noobs label;
+	title3 "Missing Data Patterns across Variables";
+	title4 h=2 "Legend: ., A, B, etc = Missing";
+	format SchoolID _nmissprint.;
+	format SchoolName SchoolLongName SchoolAddress Governance Category 
+		Network $_cmissprint.;
+	label count="Frequency" percent="Percent";
+run;
+
+title3;
+
+/* Clean up */
+proc delete data=Work._MissingData_;
+run;
+
+/*CpsApScores*/
+
+ods noproctitle;
+
+proc format;
+	value _nmissprint low-high="Non-missing";
+	value $_cmissprint " "=" " other="Non-missing";
+run;
+
+proc freq data=WORK.CPSAPSCORES;
+	title3 "Missing Data Frequencies";
+	title4 h=2 "Legend: ., A, B, etc = Missing";
+	format StudentID AnnualSchoolID APScore _nmissprint.;
+	format AnnualSchoolName APExam $_cmissprint.;
+	tables StudentID AnnualSchoolID AnnualSchoolName APScore APExam / missing 
+		nocum;
+run;
+
+proc freq data=WORK.CPSAPSCORES noprint;
+	table StudentID * AnnualSchoolID * AnnualSchoolName * APScore * APExam / 
+		missing out=Work._MissingData_;
+	format StudentID AnnualSchoolID APScore _nmissprint.;
+	format AnnualSchoolName APExam $_cmissprint.;
+run;
+
+proc print data=Work._MissingData_ noobs label;
+	title3 "Missing Data Patterns across Variables";
+	title4 h=2 "Legend: ., A, B, etc = Missing";
+	format StudentID AnnualSchoolID APScore _nmissprint.;
+	format AnnualSchoolName APExam $_cmissprint.;
+	label count="Frequency" percent="Percent";
+run;
+
+title3;
+
+
+/* Clean up */
+proc delete data=Work._MissingData_;
+run;
+
+
+
+/*Inner Join Dataframes*/
+proc sql;
+   CREATE TABLE combined_data AS
+   SELECT CpsApScores.StudentID AS StudentId, 
+          CpsApScores.AnnualSchoolID AS AnnualID, 
+          CpsApScores.AnnualSchoolName, 
+          CpsApScores.APScore AS ApScore, 
+          CpsApScores.APExam AS Exam, 
+          CpsSchoolData.SchoolID, 
+          CpsSchoolData.SchoolName, 
+          CpsSchoolData.Network,
+          CpsDemographics.CommunityArea
+   FROM CpsApScores 
+   INNER JOIN CpsSchoolData ON CpsApScores.AnnualSchoolID = CpsSchoolData.SchoolID
+   INNER JOIN CpsDemographics ON CpsApScores.AnnualSchoolID = CpsDemographics.SchoolID;
+quit;
+
+
+
+/*Check new Df for completeness*/
+ods noproctitle;
+
+proc format;
+	value _nmissprint low-high="Non-missing";
+	value $_cmissprint " "=" " other="Non-missing";
+run;
+
+proc freq data=WORK.COMBINED_DATA;
+	title3 "Missing Data Frequencies";
+	title4 h=2 "Legend: ., A, B, etc = Missing";
+	format StudentId AnnualID ApScore SchoolID _nmissprint.;
+	format AnnualSchoolName Exam SchoolName Network CommunityArea $_cmissprint.;
+	tables StudentId AnnualID AnnualSchoolName ApScore Exam SchoolID SchoolName 
+		Network CommunityArea / missing nocum;
+run;
+
+proc freq data=WORK.COMBINED_DATA noprint;
+	table StudentId * AnnualID * AnnualSchoolName * ApScore * Exam * SchoolID * 
+		SchoolName * Network * CommunityArea / missing out=Work._MissingData_;
+	format StudentId AnnualID ApScore SchoolID _nmissprint.;
+	format AnnualSchoolName Exam SchoolName Network CommunityArea $_cmissprint.;
+run;
+
+proc print data=Work._MissingData_ noobs label;
+	title3 "Missing Data Patterns across Variables";
+	title4 h=2 "Legend: ., A, B, etc = Missing";
+	format StudentId AnnualID ApScore SchoolID _nmissprint.;
+	format AnnualSchoolName Exam SchoolName Network CommunityArea $_cmissprint.;
+	label count="Frequency" percent="Percent";
+run;
+
+title3;
+
+/* Clean up */
+proc delete data=Work._MissingData_;
+run;
+
+
+/*Plot to Compare Students Passing AP Comp Sci By Network*/
+ods graphics / reset width=8in height=6in imagemap;
+
+proc sgplot data=WORK.COMBINED_DATA (where=(Exam="Computer Science Principles" 
+		AND ApScore >=3));
+	title height=14pt "Students Passing AP Comp Sci By Network";
+	vbar Network / group=ApScore groupdisplay=cluster datalabel;
+	yaxis grid label="Number Of Students";
+run;
+
+ods graphics / reset;
+title;
+
+/*Aggregate Avgs of ApCompSci Passing Scores*/
+PROC SQL;
+   CREATE TABLE ApCompSciScoreAvg AS
+   SELECT Network, ROUND(AVG(ApScore), 0.01) AS AvgApCompSciScore
+   FROM Combined_Data
+   WHERE Exam = "Computer Science Principles" AND ApScore >= 3
+   GROUP BY Network;
+QUIT;
+
+/*Plot for Avg ApCompSci Passing Scores By Network*/
+ods graphics / reset width=8in height=6in imagemap;
+
+proc sgplot data=WORK.ApCompSciScoreAvg;
+	title height=14pt "Avg Passing Ap Comp Sci Score By Network";
+	vbar Network / response=AvgApCompSciScore group=AvgApCompSciScore groupdisplay=cluster 
+		datalabel;
+	xaxis label="Avg Passing Test Score";
+	yaxis min=2.5 max=4 grid label="Avg Passing Score";
+run;
+
+ods graphics / reset;
+title;
+
+/*Passing Rates of Comp Sci*/
+PROC SQL;
+  SELECT Network,
+         SUM(CASE WHEN Exam = "Computer Science Principles" THEN 1 ELSE 0 END) AS TotalStudents,
+         SUM(CASE WHEN Exam = "Computer Science Principles" AND ApScore >= 3 THEN 1 ELSE 0 END) AS PassedStudents,
+         ROUND((SUM(CASE WHEN Exam = "Computer Science Principles" AND ApScore >= 3 THEN 1 ELSE 0 END) / SUM(CASE WHEN Exam = "Computer Science Principles" THEN 1 ELSE 0 END)) * 100, 0.01) AS PassingRate
+  FROM Combined_Data
+  WHERE Exam = "Computer Science Principles"
+  GROUP BY Network;
+QUIT;
+
+
+/*New Df to Group Subjects Closely Related to Comp Sci and Find Avgs*/
+PROC SQL;
+CREATE TABLE SubjectAvg AS
+SELECT Network,
+  CASE 
+    WHEN Exam IN ('Calculus AB', 'Calculus AB Subscore', 'Calculus BC', 'Statistics') THEN 'Math'
+    WHEN Exam IN ('Biology', 'Chemistry', 'Environmental Science', 'Physics 1: Algebra-Based', 'Physics 2: Algebra-Based', 'Physics C - Electricity and Magnetism', 'Physics C - Mechanics') THEN 'Science'
+    WHEN Exam IN ('Computer Science Principles') THEN 'Computer Science Principles'
+    ELSE 'Other'
+  END AS Subject,
+  ROUND(AVG(ApScore), 0.01) AS Avg_Score
+FROM Combined_Data
+WHERE ApScore >= 3 AND Network <> "Contract"
+GROUP BY Network, Subject;
+QUIT;
+
+
+/*Plot Comparing Subjects to Comp Sci*/
+
+ods graphics / reset width=8in height=6in imagemap;
+
+proc sgplot data=WORK.SUBJECTAVG;
+	title height=14pt "Avg Passing Scores By Subject";
+	vbar Network / response=Avg_Score group=Subject groupdisplay=cluster;
+	yaxis min=2 max=4.5 grid label="Avg Passing Score";
+run;
+
+ods graphics / reset;
+title;
+
+
+/*Exploring Network 15 Schools*/
+proc sql;
+    CREATE TABLE Network15Data AS
+    SELECT SchoolName, ROUND(ApScore, 0.01) AS CompSciScore
+    FROM COMBINED_DATA
+    WHERE Network='Network 15' AND Exam='Computer Science Principles' AND ApScore>=3
+    ORDER BY SchoolName;
+quit;
+
+/*Table Comparing Communities in Network 15*/
+PROC SQL;
+CREATE TABLE AvgScoreCommunity AS
+SELECT Network, CommunityArea,
+  CASE 
+    WHEN Exam IN ('Calculus AB', 'Calculus AB Subscore', 'Calculus BC', 'Statistics') THEN 'Math'
+    WHEN Exam IN ('Biology', 'Chemistry', 'Environmental Science', 'Physics 1: Algebra-Based', 'Physics 2: Algebra-Based', 'Physics C - Electricity and Magnetism', 'Physics C - Mechanics') THEN 'Science'
+    WHEN Exam IN ('Computer Science Principles') THEN 'Computer Science Principles'
+    ELSE 'Other'
+  END AS Subject,
+  ROUND(AVG(ApScore), 0.01) AS Avg_Score
+FROM Combined_Data
+WHERE ApScore >= 3 AND Network = "Network 15"
+GROUP BY Network, CommunityArea, Subject;
+QUIT;
+
+
+/*Plotting Network 15 Schools and Ap Comp Sci Scores*/
+
+ods graphics / reset width=8in height=6in imagemap;
+
+proc sgplot data=WORK.NETWORK15DATA;
+	title height=14pt "Passing Comp Sci Scores In Network 15";
+	vbox CompSciScore / category=SchoolName fillattrs=(color=CXafecea);
+	xaxis label="School";
+	yaxis min=2 max=5.5 grid label="Comp Sci Passing Scores";
+run;
+
+ods graphics / reset;
+title;
+
+/*Comp Sci Count of Students Passing*/
+proc sql;
+	CREATE TABLE CountStudentsPassed AS
+    SELECT SchoolName, count(*) AS NumStudentsPassed
+    FROM COMBINED_DATA
+    WHERE Network='Network 15' AND Exam='Computer Science Principles' AND ApScore>=3
+    GROUP BY SchoolName;
+quit;
+
+/*Plot for Count of Students Passing*/
+ods graphics / reset width=8in height=6in imagemap;
+
+proc sgplot data=WORK.COUNTSTUDENTSPASSED;
+	title height=14pt "Students Passing Ap Comp Sci";
+	vbar SchoolName / response=NumStudentsPassed group=NumStudentsPassed 
+		groupdisplay=cluster;
+	xaxis label="School";
+	yaxis grid label="Num Of Students Passing";
+run;
+
+ods graphics / reset;
+title;
